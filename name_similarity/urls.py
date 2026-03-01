@@ -24,7 +24,18 @@ urlpatterns = [
     path('', include('names.urls')),
 ]
 
-urlpatterns += static(
-settings.MEDIA_URL,
-document_root=settings.MEDIA_ROOT
-)
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# In production, Django should not serve media files directly. 
+# This is typically handled by a web server (like Nginx) or a CDN. 
+# However, for Render, if not using a CDN, we can explicitly serve them 
+# using django.views.static.serve when DEBUG is False.
+if not settings.DEBUG:
+    from django.views.static import serve
+    from django.urls import re_path
+
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve, {
+            'document_root': settings.MEDIA_ROOT,
+        }),
+    ]

@@ -32,8 +32,7 @@ In simple terms, as the distance between two name vectors decreases, the similar
 
 The radar plot provides a visual representation of name similarities:
 
-*   **Radius (r)**: Represents the **vector magnitude**, which can be interpreted as the 
-complexity or "heaviness" of the name. Longer vectors (larger radius) indicate more complex names.
+*   **Radius (r)**: Represents the **vector magnitude**, which can be interpreted as the complexity or "heaviness" of the name. Longer vectors (larger radius) indicate more complex names.
 *   **Angle (theta)**: Represents the **alphabetical composition** of the name. It indicates the "flavor" or "direction" of the name based on the average alphabetical index of its characters. For example, names starting with letters early in the alphabet might cluster in one angular section, while names with letters later in the alphabet might appear in another.
 *   **Lines**: Represent **similarity connections** between names. Thicker and greener lines indicate higher similarity scores between the connected names.
 *   **Nearby names**: Names that are plotted closer together on the radar chart are more similar.
@@ -107,7 +106,7 @@ Where:
 
 **Issue**: When deployed on Render, similarity calculations, database operations, and the UI function correctly, but generated plots are not visible, despite working locally.
 
-**Investigation and Fix**: The primary cause of this issue is typically related to how media files (the generated plots) are handled in a production environment like Render. Render's ephemeral filesystem means that files written directly to the application directory are lost between deployments or restarts. The solution involves configuring Django to save media files to a **persistent disk** provided by Render.
+**Investigation and Fix**: The primary cause of this issue is typically related to how media files (the generated plots) are handled in a production environment like Render. Render's ephemeral filesystem means that files written directly to the application directory are lost between deployments or restarts. The solution involves configuring Django to save media files to a **persistent disk** provided by Render and ensuring these files are served correctly in production.
 
 **Specific Changes Made**:
 
@@ -121,16 +120,28 @@ Where:
     ```
     web: python manage.py collectstatic --noinput && gunicorn name_similarity.wsgi
     ```
+*   **`name_similarity/urls.py`**: Modified to explicitly serve media files in production (when `DEBUG` is `False`) using `django.views.static.serve` with a `re_path` pattern. This ensures that URLs like `/media/plots/filename.png` are correctly mapped to the files stored in `MEDIA_ROOT`.
+    ```python
+    if not settings.DEBUG:
+        from django.views.static import serve
+        from django.urls import re_path
 
-**Explanation of the fix**: By directing `MEDIA_ROOT` to a persistent volume, the generated plot images will now persist across deployments and be accessible via the configured `MEDIA_URL` (`/media/`). The `generate_plot()` function in `names/utils.py` already uses `settings.MEDIA_ROOT` to save the plots, so this change ensures the plots are saved to the correct, persistent location.
+        urlpatterns += [
+            re_path(r'^media/(?P<path>.*)$', serve, {
+                'document_root': settings.MEDIA_ROOT,
+            }),
+        ]
+    ```
+
+**Explanation of the fix**: By directing `MEDIA_ROOT` to a persistent volume, the generated plot images will now persist across deployments. The updated `urls.py` ensures that these persisted media files are correctly served by Django itself when running in a production environment on Render, making them accessible via the configured `MEDIA_URL` (`/media/`). The `generate_plot()` function in `names/utils.py` already uses `settings.MEDIA_ROOT` to save the plots, so these changes ensure the plots are saved to the correct, persistent location and are also correctly exposed via a URL.
 
 ## 4. Fix Media Settings for Render
 
-As detailed above, the `settings.py` file was updated to ensure `MEDIA_ROOT` points to a writable and persistent directory on Render. The `MEDIA_URL` remains `'/media/'`, which is correctly handled by Django's `static` helper in `name_similarity/urls.py` for serving media files in development, and should be handled by the web server (Gunicorn/Render) in production.
+As detailed above, the `settings.py` file was updated to ensure `MEDIA_ROOT` points to a writable and persistent directory on Render. The `MEDIA_URL` remains `'/media/'`, and `name_similarity/urls.py` has been updated to correctly serve these media files in production.
 
 ## 5. Ensure Plot Generation Works on Render
 
-The `generate_plot()` function in `names/utils.py` saves plots to `os.path.join(settings.MEDIA_ROOT, "plots")`. With the `MEDIA_ROOT` now correctly configured to a persistent path on Render, plots will be saved to `/var/data/media/plots/`. The function returns the path `media/plots/{filename}`, which, when prefixed with `MEDIA_URL`, forms the correct URL for accessing the image (e.g., `/media/plots/filename.png`). This ensures that plots are saved successfully, the folder exists, files persist, and file paths are correct for Render deployment.
+The `generate_plot()` function in `names/utils.py` saves plots to `os.path.join(settings.MEDIA_ROOT, "plots")`. With the `MEDIA_ROOT` now correctly configured to a persistent path on Render, plots will be saved to `/var/data/media/plots/`. The function returns the path `media/plots/{filename}`, which, when combined with the updated `urls.py` configuration, forms the correct URL for accessing the image (e.g., `/media/plots/filename.png`). This ensures that plots are saved successfully, the folder exists, files persist, and file paths are correct for Render deployment.
 
 ## 6. Improve Project Clarity
 
@@ -142,5 +153,5 @@ Code comments and docstrings have been added to key functions in `names/utils.py
 2.  **Updated headings and descriptions**: All relevant sections in the `README.md` have been updated to provide clear and beginner-friendly explanations.
 3.  **Fixed `settings.py`**: `MEDIA_ROOT` configured for persistent storage on Render.
 4.  **Fixed media configuration**: Ensured media files are saved to and served from the correct persistent location on Render.
-5.  **Fixed plot rendering issue**: The combination of `settings.py` and `Procfile` changes addresses the plot visibility issue on Render.
+5.  **Fixed plot rendering issue**: The combination of `settings.py`, `Procfile`, and `urls.py` changes addresses the plot visibility issue on Render.
 6.  **Explanation of what was wrong with Render plot display**: Provided in section 3 of this `README.md`.
