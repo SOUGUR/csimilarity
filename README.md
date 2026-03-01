@@ -74,8 +74,8 @@ To set up the project locally, follow these steps:
 
 This project is designed to be deployed on platforms like Render. Key considerations for deployment include:
 
-*   **SQLite Database**: The project uses an SQLite database, which is suitable for smaller applications. For production environments, consider using a more robust database solution like PostgreSQL.
-*   **Media Files for Plots**: Generated plots are saved as media files. On Render, these files need to be stored in a persistent disk to ensure they are not lost between deployments. The `MEDIA_ROOT` setting in `settings.py` should point to a writable persistent directory (e.g., `/var/data/media`).
+*   **SQLite Database**: The project uses an SQLite database. For Render deployment, it's crucial to configure a persistent disk for the database. The `DATABASES` setting in `settings.py` should point to the persistent disk's mount path (e.g., `/opt/render/project/src/db/db.sqlite3`).
+*   **Media Files for Plots**: Generated plots are saved as media files. On Render, these files also need to be stored in a persistent disk to ensure they are not lost between deployments. The `MEDIA_ROOT` setting in `settings.py` should point to a writable persistent directory (e.g., `/opt/render/project/src/media`).
 *   **Gunicorn Server**: The application is served using Gunicorn in production, as specified in the `Procfile`.
 
 ## 2. Add Technical Explanation Section
@@ -106,20 +106,37 @@ Where:
 
 **Issue**: When deployed on Render, similarity calculations, database operations, and the UI function correctly, but generated plots are not visible, despite working locally.
 
-**Investigation and Fix**: The primary cause of this issue is typically related to how media files (the generated plots) are handled in a production environment like Render. Render's ephemeral filesystem means that files written directly to the application directory are lost between deployments or restarts. The solution involves configuring Django to save media files to a **persistent disk** provided by Render and ensuring these files are served correctly in production.
+**Investigation and Fix**: The primary cause of this issue stems from two factors:
+
+1.  **Ephemeral Filesystem**: Render's default filesystem is ephemeral, meaning any files written directly to the application directory are lost between deployments or restarts. This affects both the SQLite database and the generated plot images.
+2.  **Production Media Serving**: In a production environment (`DEBUG = False`), Django does not serve media files by default. A separate mechanism is required to expose these files.
 
 **Specific Changes Made**:
 
-*   **`settings.py`**: The `MEDIA_ROOT` setting was updated to point to a persistent directory on Render, specifically `/var/data/media`. An `os.makedirs` call was added to ensure this directory exists.
+*   **Render Persistent Disk Configuration**: A persistent disk must be configured on Render with the following mount paths:
+    *   `/opt/render/project/src/db` for the SQLite database.
+    *   `/opt/render/project/src/media` for the generated plot images.
+
+*   **`settings.py`**: Updated to use the Render-specific persistent disk paths:
     ```python
-    MEDIA_ROOT = os.path.join("/var/data", "media")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': '/opt/render/project/src/db/db.sqlite3',
+        }
+    }
+
+    MEDIA_ROOT = '/opt/render/project/src/media'
+    # Ensure that the media directory exists (Render will handle this if disk is mounted)
     if not os.path.exists(MEDIA_ROOT):
         os.makedirs(MEDIA_ROOT)
     ```
-*   **`Procfile`**: The `collectstatic` command was added to the `web` entry in the `Procfile` to ensure static files are collected during deployment. While `collectstatic` is for static files, ensuring proper static file serving can sometimes indirectly affect media file serving configurations or highlight other deployment issues.
+
+*   **`Procfile`**: The `collectstatic` command was added to the `web` entry in the `Procfile` to ensure static files are collected during deployment.
     ```
     web: python manage.py collectstatic --noinput && gunicorn name_similarity.wsgi
     ```
+
 *   **`name_similarity/urls.py`**: Modified to explicitly serve media files in production (when `DEBUG` is `False`) using `django.views.static.serve` with a `re_path` pattern. This ensures that URLs like `/media/plots/filename.png` are correctly mapped to the files stored in `MEDIA_ROOT`.
     ```python
     if not settings.DEBUG:
@@ -133,15 +150,15 @@ Where:
         ]
     ```
 
-**Explanation of the fix**: By directing `MEDIA_ROOT` to a persistent volume, the generated plot images will now persist across deployments. The updated `urls.py` ensures that these persisted media files are correctly served by Django itself when running in a production environment on Render, making them accessible via the configured `MEDIA_URL` (`/media/`). The `generate_plot()` function in `names/utils.py` already uses `settings.MEDIA_ROOT` to save the plots, so these changes ensure the plots are saved to the correct, persistent location and are also correctly exposed via a URL.
+**Explanation of the fix**: By configuring a persistent disk on Render and updating `settings.py` to point to these specific mount paths, both the database and the generated plot images will now persist across deployments. The updated `urls.py` ensures that these persisted media files are correctly served by Django itself when running in a production environment on Render, making them accessible via the configured `MEDIA_URL` (`/media/`). The `generate_plot()` function in `names/utils.py` already uses `settings.MEDIA_ROOT` to save the plots, so these changes ensure the plots are saved to the correct, persistent location and are also correctly exposed via a URL.
 
 ## 4. Fix Media Settings for Render
 
-As detailed above, the `settings.py` file was updated to ensure `MEDIA_ROOT` points to a writable and persistent directory on Render. The `MEDIA_URL` remains `'/media/'`, and `name_similarity/urls.py` has been updated to correctly serve these media files in production.
+As detailed above, the `settings.py` file was updated to ensure `MEDIA_ROOT` points to the specific writable and persistent directory `/opt/render/project/src/media` on Render. The `MEDIA_URL` remains `'/media/'`, and `name_similarity/urls.py` has been updated to correctly serve these media files in production.
 
 ## 5. Ensure Plot Generation Works on Render
 
-The `generate_plot()` function in `names/utils.py` saves plots to `os.path.join(settings.MEDIA_ROOT, "plots")`. With the `MEDIA_ROOT` now correctly configured to a persistent path on Render, plots will be saved to `/var/data/media/plots/`. The function returns the path `media/plots/{filename}`, which, when combined with the updated `urls.py` configuration, forms the correct URL for accessing the image (e.g., `/media/plots/filename.png`). This ensures that plots are saved successfully, the folder exists, files persist, and file paths are correct for Render deployment.
+The `generate_plot()` function in `names/utils.py` saves plots to `os.path.join(settings.MEDIA_ROOT, "plots")`. With the `MEDIA_ROOT` now correctly configured to `/opt/render/project/src/media` on Render, plots will be saved to `/opt/render/project/src/media/plots/`. The function returns the path `media/plots/{filename}`, which, when combined with the updated `urls.py` configuration, forms the correct URL for accessing the image (e.g., `/media/plots/filename.png`). This ensures that plots are saved successfully, the folder exists, files persist, and file paths are correct for Render deployment.
 
 ## 6. Improve Project Clarity
 
@@ -151,7 +168,7 @@ Code comments and docstrings have been added to key functions in `names/utils.py
 
 1.  **Updated `README.md`**: This document itself, providing a comprehensive overview, explanation of how the project works, mathematical model, and deployment details.
 2.  **Updated headings and descriptions**: All relevant sections in the `README.md` have been updated to provide clear and beginner-friendly explanations.
-3.  **Fixed `settings.py`**: `MEDIA_ROOT` configured for persistent storage on Render.
+3.  **Fixed `settings.py`**: `MEDIA_ROOT` and `DATABASES` configured for persistent storage on Render.
 4.  **Fixed media configuration**: Ensured media files are saved to and served from the correct persistent location on Render.
-5.  **Fixed plot rendering issue**: The combination of `settings.py`, `Procfile`, and `urls.py` changes addresses the plot visibility issue on Render.
+5.  **Fixed plot rendering issue**: The combination of `settings.py`, `Procfile`, and `urls.py` changes, along with the crucial Render persistent disk setup, addresses the plot visibility issue on Render.
 6.  **Explanation of what was wrong with Render plot display**: Provided in section 3 of this `README.md`.

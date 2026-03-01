@@ -78,7 +78,7 @@ WSGI_APPLICATION = 'name_similarity.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': '/opt/render/project/src/db/db.sqlite3',
     }
 }
 
@@ -123,7 +123,7 @@ USE_TZ = True
 
 MEDIA_URL = '/media/'
 
-MEDIA_ROOT = os.path.join('/var/data', 'media')
+MEDIA_ROOT = '/opt/render/project/src/media'
 # Ensure that the media directory exists
 if not os.path.exists(MEDIA_ROOT):
     os.makedirs(MEDIA_ROOT)
