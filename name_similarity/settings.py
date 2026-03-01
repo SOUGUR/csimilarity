@@ -123,7 +123,10 @@ USE_TZ = True
 
 MEDIA_URL = '/media/'
 
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = os.path.join('/var/data', 'media')
+# Ensure that the media directory exists
+if not os.path.exists(MEDIA_ROOT):
+    os.makedirs(MEDIA_ROOT)
 
 STATIC_URL = '/static/'
 

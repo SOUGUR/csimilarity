@@ -11,10 +11,20 @@ import matplotlib.pyplot as plt
 
 #returns index of character stating from 1
 def alphabet_index(c):
+    """
+    Returns the 1-based alphabetical index of a character.
+    e.g., a=1, b=2, ..., z=26
+    """
     return ord(c.lower()) - 96
 
 
 def calculate_xy(name):
+    """
+    Calculates the X and Y coordinates for a given name based on letter frequencies and positions.
+
+    X-coordinate: Sum of squared letter frequencies.
+    Y-coordinate: Sum of (letter position in name * alphabetical index of letter).
+    """
     name = name.lower()
     freq = [0]*26
 
@@ -37,6 +47,10 @@ def calculate_xy(name):
 
 
 def get_or_create_vector(name):
+    """
+    Retrieves the pre-calculated vector (x, y) for a name from the database.
+    If the vector does not exist, it calculates and stores it before returning.
+    """
 
     obj = NameVector.objects.filter(
         name=name
@@ -61,6 +75,10 @@ def get_or_create_vector(name):
     return x,y
 
 def letter_similarity(n1,n2):
+    """
+    Calculates a letter-frequency-based similarity score between two names.
+    The score is higher for names with similar letter frequency distributions.
+    """
 
     f1=[0]*26
     f2=[0]*26
@@ -87,6 +105,9 @@ def letter_similarity(n1,n2):
 
 
 def distance(p1,p2):
+    """
+    Calculates the Euclidean distance between two 2D points (vectors).
+    """
     return np.sqrt(
         (p1[0]-p2[0])**2 +
         (p1[1]-p2[1])**2
@@ -94,6 +115,10 @@ def distance(p1,p2):
 
 
 def similarity_score(n1,n2,p1,p2):
+    """
+    Calculates a combined similarity score between two names.
+    It's a weighted average of vector distance-based similarity and letter frequency similarity.
+    """
 
     L = letter_similarity(n1,n2)
 
@@ -106,16 +131,21 @@ def similarity_score(n1,n2,p1,p2):
 
 
 def generate_plot(names, get_vector_func, similarity_func):
+    """
+    Generates a radar plot visualizing the similarity between a list of names.
+    The plot shows names as points, with radius representing complexity and angle representing alphabetical composition.
+    Lines connect similar names, with line thickness and color indicating similarity strength.
+    """
     data = []
     for name in names:
         x, y = get_vector_func(name)
         
-        # 1. Radius (r): Use complexity/length (how "heavy" the name is)
-        # We use a log or square root to keep long names from flying off the chart
+        # Radius (r): Represents the 'magnitude' or 'complexity' of the name vector.
+        # A square root of a square root is used to compress the range for better visualization.
         r = np.sqrt(np.sqrt(x*x + y*y))
         
-        # 2. Angle (theta): Use the "Average Character Value" 
-        # This determines the "Flavor" or "Direction" of the name (A-names vs Z-names)
+        # Angle (theta): Represents the 'alphabetical composition' or 'flavor' of the name.
+        # It maps the average alphabetical index of characters to an angle in radians (0 to 2*pi).
         chars = [ord(c.lower()) - 96 for c in name if c.isalpha()]
         avg_char = sum(chars) / len(chars) if chars else 0
         
